@@ -7,11 +7,8 @@ app.use(cors());
 app.use(express.json());
 
 const pool = new Pool({
-  user: "postgres",
-  host: "localhost",
-  database: "phonebook",
-  password: "H@mid1376",
-  port: 5432,
+  connectionString: "postgresql://postgres.zgnpjwczcnbbhpwrdbbg:HHHH@mid1376@aws-0-eu-west-1.pooler.supabase.com:5432/postgres",
+  ssl: { rejectUnauthorized: false }
 });
 
 // GET همه مخاطبین

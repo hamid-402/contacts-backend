@@ -7,7 +7,7 @@ app.use(cors());
 app.use(express.json());
 
 const pool = new Pool({
-  connectionString: "postgresql://postgres:HHHH@mid1376@db.zgnpjwczcnbbhpwrdbbg.supabase.co:5432/postgres",
+  connectionString: "postgresql://postgres.zgnpjwczcnbbhpwrdbbg:HHHH@mid1376@aws-0-eu-west-1.pooler.supabase.com:5432/postgres",
   ssl: { rejectUnauthorized: false },
   max: 1
 });
@@ -33,10 +33,13 @@ app.get("/contacts/:id", async (req, res) => {
 // POST اضافه کردن
 app.post("/contacts", async (req, res) => {
   const { name, phone, category, date, user_id } = req.body;
+  console.log("POST body:", req.body);
+  console.log("user_id:", user_id);
   const result = await pool.query(
     "INSERT INTO contacts (name, phone, category, date, user_id) VALUES ($1, $2, $3, $4, $5) RETURNING *",
     [name, phone, category || "Other", date || "", user_id]
   );
+  console.log("inserted:", result.rows[0]);
   res.json(result.rows[0]);
 });
 

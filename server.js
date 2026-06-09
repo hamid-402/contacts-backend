@@ -8,7 +8,8 @@ app.use(express.json());
 
 const pool = new Pool({
   connectionString: "postgresql://postgres.zgnpjwczcnbbhpwrdbbg:HHHH@mid1376@aws-0-eu-west-1.pooler.supabase.com:5432/postgres",
-  ssl: { rejectUnauthorized: false }
+  ssl: { rejectUnauthorized: false },
+  max: 1
 });
 
 // GET همه مخاطبین یه کاربر

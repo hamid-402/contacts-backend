@@ -11,9 +11,14 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-// GET همه مخاطبین
+// GET همه مخاطبین یه کاربر
 app.get("/contacts", async (req, res) => {
-  const result = await pool.query("SELECT * FROM contacts ORDER BY id DESC");
+  const { user_id } = req.query;
+  if (!user_id) return res.json([]);
+  const result = await pool.query(
+    "SELECT * FROM contacts WHERE user_id = $1 ORDER BY id DESC",
+    [user_id]
+  );
   res.json(result.rows);
 });
 
@@ -26,10 +31,10 @@ app.get("/contacts/:id", async (req, res) => {
 
 // POST اضافه کردن
 app.post("/contacts", async (req, res) => {
-  const { name, phone, category, date } = req.body;
+  const { name, phone, category, date, user_id } = req.body;
   const result = await pool.query(
-    "INSERT INTO contacts (name, phone, category, date) VALUES ($1, $2, $3, $4) RETURNING *",
-    [name, phone, category || "Other", date || ""]
+    "INSERT INTO contacts (name, phone, category, date, user_id) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+    [name, phone, category || "Other", date || "", user_id]
   );
   res.json(result.rows[0]);
 });

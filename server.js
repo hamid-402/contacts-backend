@@ -51,7 +51,7 @@ app.post("/users", async (req, res) => {
       }
     );
     const data = await response.json();
-    if (!response.ok) throw new Error(data.message || data.error || "خطا در ساخت کاربر");
+    if (!response.ok) throw new Error(JSON.stringify(data));
 
     await pool.query(
       "INSERT INTO profiles (id, email, full_name, role) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO UPDATE SET full_name = $3, role = $4",

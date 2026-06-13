@@ -12,53 +12,135 @@ const pool = new Pool({
   max: 1
 });
 
-// GET همه مخاطبین یه کاربر
-app.get("/contacts", async (req, res) => {
-  const { user_id } = req.query;
-  if (!user_id) return res.json([]);
+// ── گرفتن پروفایل کاربر ──
+app.get("/profile/:user_id", async (req, res) => {
+  const { user_id } = req.params;
   const result = await pool.query(
-    "SELECT * FROM contacts WHERE user_id = $1 ORDER BY id DESC",
+    "SELECT * FROM profiles WHERE id = $1",
     [user_id]
   );
+  res.json(result.rows[0] || null);
+});
+
+// ── گرفتن همه کاربران (فقط Admin) ──
+app.get("/users", async (req, res) => {
+  const { user_id } = req.query;
+  const profile = await pool.query("SELECT role FROM profiles WHERE id = $1", [user_id]);
+  if (!profile.rows[0] || profile.rows[0].role !== 1) {
+    return res.status(403).json({ error: "دسترسی ندارید" });
+  }
+  const result = await pool.query("SELECT * FROM profiles ORDER BY role ASC");
   res.json(result.rows);
 });
 
-// GET یک مخاطب
+// ── اضافه کردن کاربر (فقط Admin) ──
+app.post("/users", async (req, res) => {
+  const { admin_id, email, full_name, role, password } = req.body;
+  const profile = await pool.query("SELECT role FROM profiles WHERE id = $1", [admin_id]);
+  if (!profile.rows[0] || profile.rows[0].role !== 1) {
+    return res.status(403).json({ error: "دسترسی ندارید" });
+  }
+  res.json({ message: "کاربر باید از طریق Supabase اضافه شود", email, full_name, role });
+});
+
+// ── آپدیت سطح دسترسی کاربر (فقط Admin) ──
+app.put("/users/:id", async (req, res) => {
+  const { id } = req.params;
+  const { admin_id, role, full_name } = req.body;
+  const profile = await pool.query("SELECT role FROM profiles WHERE id = $1", [admin_id]);
+  if (!profile.rows[0] || profile.rows[0].role !== 1) {
+    return res.status(403).json({ error: "دسترسی ندارید" });
+  }
+  const result = await pool.query(
+    "UPDATE profiles SET role = $1, full_name = $2 WHERE id = $3 RETURNING *",
+    [role, full_name, id]
+  );
+  res.json(result.rows[0]);
+});
+
+// ── حذف کاربر (فقط Admin) ──
+app.delete("/users/:id", async (req, res) => {
+  const { id } = req.params;
+  const { admin_id } = req.body;
+  const profile = await pool.query("SELECT role FROM profiles WHERE id = $1", [admin_id]);
+  if (!profile.rows[0] || profile.rows[0].role !== 1) {
+    return res.status(403).json({ error: "دسترسی ندارید" });
+  }
+  await pool.query("DELETE FROM profiles WHERE id = $1", [id]);
+  res.json({ message: "کاربر حذف شد" });
+});
+
+// ── GET همه مخاطبین با فیلتر سطح دسترسی ──
+app.get("/contacts", async (req, res) => {
+  const { user_id } = req.query;
+  if (!user_id) return res.json([]);
+  
+  const profile = await pool.query("SELECT role FROM profiles WHERE id = $1", [user_id]);
+  const userRole = profile.rows[0]?.role || 4;
+
+  let result;
+  if (userRole === 1 || userRole === 2) {
+    // سطح ۱ و ۲ همه مخاطبین رو میبینن (۲ بجز visibility=1)
+    if (userRole === 1) {
+      result = await pool.query(
+        "SELECT * FROM contacts WHERE user_id = $1 ORDER BY id DESC",
+        [user_id]
+      );
+    } else {
+      result = await pool.query(
+        "SELECT * FROM contacts WHERE user_id = $1 AND visibility > 1 ORDER BY id DESC",
+        [user_id]
+      );
+    }
+  } else if (userRole === 3) {
+    result = await pool.query(
+      "SELECT * FROM contacts WHERE user_id = $1 AND visibility >= 3 ORDER BY id DESC",
+      [user_id]
+    );
+  } else {
+    result = await pool.query(
+      "SELECT * FROM contacts WHERE user_id = $1 AND visibility = 4 ORDER BY id DESC",
+      [user_id]
+    );
+  }
+  res.json(result.rows);
+});
+
+// ── GET یک مخاطب ──
 app.get("/contacts/:id", async (req, res) => {
   const { id } = req.params;
   const result = await pool.query("SELECT * FROM contacts WHERE id = $1", [id]);
   res.json(result.rows[0]);
 });
 
-// POST اضافه کردن
+// ── POST اضافه کردن مخاطب ──
 app.post("/contacts", async (req, res) => {
-  const { name, phone, category, date, user_id } = req.body;
+  const { name, phone, category, date, user_id, visibility } = req.body;
   console.log("POST body:", req.body);
-  console.log("user_id:", user_id);
   const result = await pool.query(
-    "INSERT INTO contacts (name, phone, category, date, user_id) VALUES ($1, $2, $3, $4, $5) RETURNING *",
-    [name, phone, category || "Other", date || "", user_id]
+    "INSERT INTO contacts (name, phone, category, date, user_id, visibility) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
+    [name, phone, category || "Other", date || "", user_id, visibility || 4]
   );
   console.log("inserted:", result.rows[0]);
   res.json(result.rows[0]);
 });
 
-// PUT ویرایش
+// ── PUT ویرایش مخاطب ──
 app.put("/contacts/:id", async (req, res) => {
   const { id } = req.params;
-  const { name, phone, category, date } = req.body;
+  const { name, phone, category, date, visibility } = req.body;
   const result = await pool.query(
-    "UPDATE contacts SET name = $1, phone = $2, category = $3, date = $4 WHERE id = $5 RETURNING *",
-    [name, phone, category || "Other", date || "", id]
+    "UPDATE contacts SET name = $1, phone = $2, category = $3, date = $4, visibility = $5 WHERE id = $6 RETURNING *",
+    [name, phone, category || "Other", date || "", visibility || 4, id]
   );
   res.json(result.rows[0]);
 });
 
-// DELETE حذف
+// ── DELETE حذف مخاطب ──
 app.delete("/contacts/:id", async (req, res) => {
   const { id } = req.params;
   await pool.query("DELETE FROM contacts WHERE id = $1", [id]);
-  res.json({ message: "Contact deleted" });
+  res.json({ message: "مخاطب حذف شد" });
 });
 
 app.listen(3001, () => {

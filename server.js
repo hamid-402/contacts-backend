@@ -17,7 +17,12 @@ const { createClient } = require('@supabase/supabase-js');
 const supabaseAdmin = createClient(
   'https://zgnpjwczcnbbhpwrdbbg.supabase.co',
   process.env.SUPABASE_SECRET_KEY,
-  { auth: { autoRefreshToken: false, persistSession: false } }
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
 );
 
 // ── گرفتن پروفایل کاربر ──
@@ -48,7 +53,37 @@ app.post("/users", async (req, res) => {
   if (!profile.rows[0] || profile.rows[0].role !== 1) {
     return res.status(403).json({ error: "دسترسی ندارید" });
   }
-  res.json({ message: "کاربر باید از طریق Supabase اضافه شود", email, full_name, role });
+  try {
+    // ساخت کاربر با REST API مستقیم
+    const response = await fetch(
+      'https://zgnpjwczcnbbhpwrdbbg.supabase.co/auth/v1/admin/users',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': process.env.SUPABASE_SECRET_KEY,
+          'Authorization': `Bearer ${process.env.SUPABASE_SECRET_KEY}`,
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          email_confirm: true,
+        }),
+      }
+    );
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || data.error || "خطا در ساخت کاربر");
+
+    await pool.query(
+      "INSERT INTO profiles (id, email, full_name, role) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO UPDATE SET full_name = $3, role = $4",
+      [data.id, email, full_name, role]
+    );
+
+    res.json({ message: "کاربر اضافه شد" });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 // ── آپدیت سطح دسترسی کاربر (فقط Admin) ──

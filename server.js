@@ -5,6 +5,7 @@ const { Pool } = require("pg");
 const app = express();
 app.use(cors());
 app.use(express.json());
+console.log("SERVICE KEY:", process.env.SUPABASE_SERVICE_KEY ? "loaded" : "NOT LOADED");
 
 const pool = new Pool({
   connectionString: "postgresql://postgres.zgnpjwczcnbbhpwrdbbg:HHHH@mid1376@aws-0-eu-west-1.pooler.supabase.com:5432/postgres",

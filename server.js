@@ -16,7 +16,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const supabaseAdmin = createClient(
   'https://zgnpjwczcnbbhpwrdbbg.supabase.co',
-  'sb_secret_2j_I6hEWbdG5-xoCPqYjvA_4J6vPh06',
+  process.env.SUPABASE_SECRET_KEY,
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 

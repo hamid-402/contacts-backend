@@ -5,7 +5,6 @@ const { Pool } = require("pg");
 const app = express();
 app.use(cors());
 app.use(express.json());
-console.log("SERVICE KEY:", process.env.SUPABASE_SERVICE_KEY ? "loaded" : "NOT LOADED");
 
 const pool = new Pool({
   connectionString: "postgresql://postgres.zgnpjwczcnbbhpwrdbbg:HHHH@mid1376@aws-0-eu-west-1.pooler.supabase.com:5432/postgres",
@@ -13,26 +12,10 @@ const pool = new Pool({
   max: 1
 });
 
-const { createClient } = require('@supabase/supabase-js');
-
-const supabaseAdmin = createClient(
-  'https://zgnpjwczcnbbhpwrdbbg.supabase.co',
-  process.env.SUPABASE_SECRET_KEY,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-);
-
 // ── گرفتن پروفایل کاربر ──
 app.get("/profile/:user_id", async (req, res) => {
   const { user_id } = req.params;
-  const result = await pool.query(
-    "SELECT * FROM profiles WHERE id = $1",
-    [user_id]
-  );
+  const result = await pool.query("SELECT * FROM profiles WHERE id = $1", [user_id]);
   res.json(result.rows[0] || null);
 });
 
@@ -55,7 +38,6 @@ app.post("/users", async (req, res) => {
     return res.status(403).json({ error: "دسترسی ندارید" });
   }
   try {
-    // ساخت کاربر با REST API مستقیم
     const response = await fetch(
       'https://zgnpjwczcnbbhpwrdbbg.supabase.co/auth/v1/admin/users',
       {
@@ -65,14 +47,9 @@ app.post("/users", async (req, res) => {
           'apikey': process.env.SUPABASE_SERVICE_KEY,
           'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_KEY}`,
         },
-        body: JSON.stringify({
-          email,
-          password,
-          email_confirm: true,
-        }),
+        body: JSON.stringify({ email, password, email_confirm: true }),
       }
     );
-
     const data = await response.json();
     if (!response.ok) throw new Error(data.message || data.error || "خطا در ساخت کاربر");
 
@@ -80,7 +57,6 @@ app.post("/users", async (req, res) => {
       "INSERT INTO profiles (id, email, full_name, role) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO UPDATE SET full_name = $3, role = $4",
       [data.id, email, full_name, role]
     );
-
     res.json({ message: "کاربر اضافه شد" });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -118,24 +94,21 @@ app.delete("/users/:id", async (req, res) => {
 app.get("/contacts", async (req, res) => {
   const { user_id } = req.query;
   if (!user_id) return res.json([]);
-  
+
   const profile = await pool.query("SELECT role FROM profiles WHERE id = $1", [user_id]);
   const userRole = profile.rows[0]?.role || 4;
 
   let result;
-  if (userRole === 1 || userRole === 2) {
-    // سطح ۱ و ۲ همه مخاطبین رو میبینن (۲ بجز visibility=1)
-    if (userRole === 1) {
-      result = await pool.query(
-        "SELECT * FROM contacts WHERE user_id = $1 ORDER BY id DESC",
-        [user_id]
-      );
-    } else {
-      result = await pool.query(
-        "SELECT * FROM contacts WHERE user_id = $1 AND visibility > 1 ORDER BY id DESC",
-        [user_id]
-      );
-    }
+  if (userRole === 1) {
+    result = await pool.query(
+      "SELECT * FROM contacts WHERE user_id = $1 ORDER BY id DESC",
+      [user_id]
+    );
+  } else if (userRole === 2) {
+    result = await pool.query(
+      "SELECT * FROM contacts WHERE user_id = $1 AND visibility > 1 ORDER BY id DESC",
+      [user_id]
+    );
   } else if (userRole === 3) {
     result = await pool.query(
       "SELECT * FROM contacts WHERE user_id = $1 AND visibility >= 3 ORDER BY id DESC",
@@ -158,29 +131,15 @@ app.get("/contacts/:id", async (req, res) => {
 });
 
 // ── POST اضافه کردن مخاطب ──
-app.post("/users", async (req, res) => {
-  const { admin_id, email, full_name, role, password } = req.body;
-  const profile = await pool.query("SELECT role FROM profiles WHERE id = $1", [admin_id]);
-  if (!profile.rows[0] || profile.rows[0].role !== 1) {
-    return res.status(403).json({ error: "دسترسی ندارید" });
-  }
-  try {
-    const { data, error } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-    });
-    if (error) throw error;
-
-    await pool.query(
-      "INSERT INTO profiles (id, email, full_name, role) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO UPDATE SET full_name = $3, role = $4",
-      [data.user.id, email, full_name, role]
-    );
-
-    res.json({ message: "کاربر اضافه شد", user: data.user });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
+app.post("/contacts", async (req, res) => {
+  const { name, phone, category, date, user_id, visibility } = req.body;
+  console.log("POST body:", req.body);
+  const result = await pool.query(
+    "INSERT INTO contacts (name, phone, category, date, user_id, visibility) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
+    [name, phone, category || "Other", date || "", user_id, visibility || 4]
+  );
+  console.log("inserted:", result.rows[0]);
+  res.json(result.rows[0]);
 });
 
 // ── PUT ویرایش مخاطب ──

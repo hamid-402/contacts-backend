@@ -61,8 +61,8 @@ app.post("/users", async (req, res) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'apikey': process.env.SUPABASE_SECRET_KEY,
-          'Authorization': `Bearer ${process.env.SUPABASE_SECRET_KEY}`,
+          'apikey': process.env.SUPABASE_SERVICE_KEY,
+          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_KEY}`,
         },
         body: JSON.stringify({
           email,

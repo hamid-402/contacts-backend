@@ -12,6 +12,14 @@ const pool = new Pool({
   max: 1
 });
 
+const { createClient } = require('@supabase/supabase-js');
+
+const supabaseAdmin = createClient(
+  'https://zgnpjwczcnbbhpwrdbbg.supabase.co',
+  'sb_secret_2j_I6hEWbdG5-xoCPqYjvA_4J6vPh06',
+  { auth: { autoRefreshToken: false, persistSession: false } }
+);
+
 // ── گرفتن پروفایل کاربر ──
 app.get("/profile/:user_id", async (req, res) => {
   const { user_id } = req.params;
@@ -114,15 +122,29 @@ app.get("/contacts/:id", async (req, res) => {
 });
 
 // ── POST اضافه کردن مخاطب ──
-app.post("/contacts", async (req, res) => {
-  const { name, phone, category, date, user_id, visibility } = req.body;
-  console.log("POST body:", req.body);
-  const result = await pool.query(
-    "INSERT INTO contacts (name, phone, category, date, user_id, visibility) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
-    [name, phone, category || "Other", date || "", user_id, visibility || 4]
-  );
-  console.log("inserted:", result.rows[0]);
-  res.json(result.rows[0]);
+app.post("/users", async (req, res) => {
+  const { admin_id, email, full_name, role, password } = req.body;
+  const profile = await pool.query("SELECT role FROM profiles WHERE id = $1", [admin_id]);
+  if (!profile.rows[0] || profile.rows[0].role !== 1) {
+    return res.status(403).json({ error: "دسترسی ندارید" });
+  }
+  try {
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+    });
+    if (error) throw error;
+
+    await pool.query(
+      "INSERT INTO profiles (id, email, full_name, role) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO UPDATE SET full_name = $3, role = $4",
+      [data.user.id, email, full_name, role]
+    );
+
+    res.json({ message: "کاربر اضافه شد", user: data.user });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 // ── PUT ویرایش مخاطب ──

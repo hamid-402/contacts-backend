@@ -171,6 +171,63 @@ app.delete("/contacts/:id", async (req, res) => {
   res.json({ message: "مخاطب حذف شد" });
 });
 
+// ── گرفتن همه درخواست‌ها (فقط Admin) ──
+app.get("/contact-requests", async (req, res) => {
+  const { user_id } = req.query;
+  const profile = await pool.query("SELECT role FROM profiles WHERE id = $1", [user_id]);
+  if (!profile.rows[0] || profile.rows[0].role !== 1) {
+    return res.status(403).json({ error: "دسترسی ندارید" });
+  }
+  const result = await pool.query(
+    "SELECT cr.*, p.email FROM contact_requests cr LEFT JOIN profiles p ON cr.user_id = p.id ORDER BY cr.created_at DESC"
+  );
+  res.json(result.rows);
+});
+
+// ── ارسال درخواست توسط کاربر ──
+app.post("/contact-requests", async (req, res) => {
+  const { user_id, full_name, phone } = req.body;
+  const existing = await pool.query(
+    "SELECT id FROM contact_requests WHERE user_id = $1 AND status = 'pending'",
+    [user_id]
+  );
+  if (existing.rows.length > 0) {
+    return res.status(400).json({ error: "شما قبلاً درخواست ارسال کرده‌اید" });
+  }
+  const result = await pool.query(
+    "INSERT INTO contact_requests (user_id, full_name, phone) VALUES ($1, $2, $3) RETURNING *",
+    [user_id, full_name, phone]
+  );
+  res.json(result.rows[0]);
+});
+
+// ── تایید یا رد درخواست (فقط Admin) ──
+app.put("/contact-requests/:id", async (req, res) => {
+  const { id } = req.params;
+  const { admin_id, status, visibility } = req.body;
+  const profile = await pool.query("SELECT role FROM profiles WHERE id = $1", [admin_id]);
+  if (!profile.rows[0] || profile.rows[0].role !== 1) {
+    return res.status(403).json({ error: "دسترسی ندارید" });
+  }
+
+  const request = await pool.query("SELECT * FROM contact_requests WHERE id = $1", [id]);
+  const req_data = request.rows[0];
+
+  if (status === 'approved') {
+    await pool.query(
+      "INSERT INTO contacts (name, phone, category, date, user_id, visibility) VALUES ($1, $2, $3, $4, $5, $6)",
+      [req_data.full_name, req_data.phone, 'Other', new Date().toDateString(), req_data.user_id, visibility]
+    );
+  }
+
+  await pool.query(
+    "UPDATE contact_requests SET status = $1, visibility = $2 WHERE id = $3",
+    [status, visibility, id]
+  );
+
+  res.json({ message: status === 'approved' ? "تایید شد" : "رد شد" });
+});
+
 app.listen(3001, () => {
   console.log("Server is running on port 3001");
 });

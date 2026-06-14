@@ -100,24 +100,24 @@ app.get("/contacts", async (req, res) => {
 
   let result;
   if (userRole === 1) {
+    // مدیر ارشد — همه مخاطبین رو میبینه
     result = await pool.query(
-      "SELECT * FROM contacts WHERE user_id = $1 ORDER BY id DESC",
-      [user_id]
+      "SELECT * FROM contacts ORDER BY id DESC"
     );
   } else if (userRole === 2) {
+    // مدیر — مخاطبین با visibility 2، 3، 4
     result = await pool.query(
-      "SELECT * FROM contacts WHERE user_id = $1 AND visibility > 1 ORDER BY id DESC",
-      [user_id]
+      "SELECT * FROM contacts WHERE visibility >= 2 ORDER BY id DESC"
     );
   } else if (userRole === 3) {
+    // کارمند — مخاطبین با visibility 3، 4
     result = await pool.query(
-      "SELECT * FROM contacts WHERE user_id = $1 AND visibility >= 3 ORDER BY id DESC",
-      [user_id]
+      "SELECT * FROM contacts WHERE visibility >= 3 ORDER BY id DESC"
     );
   } else {
+    // کاربر عادی — فقط مخاطبین با visibility 4
     result = await pool.query(
-      "SELECT * FROM contacts WHERE user_id = $1 AND visibility = 4 ORDER BY id DESC",
-      [user_id]
+      "SELECT * FROM contacts WHERE visibility = 4 ORDER BY id DESC"
     );
   }
   res.json(result.rows);

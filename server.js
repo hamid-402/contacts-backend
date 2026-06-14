@@ -201,6 +201,18 @@ app.post("/contact-requests", async (req, res) => {
   res.json(result.rows[0]);
 });
 
+
+// ── گرفتن درخواست یه کاربر خاص ──
+app.get("/contact-requests/user/:user_id", async (req, res) => {
+  const { user_id } = req.params;
+  const result = await pool.query(
+    "SELECT * FROM contact_requests WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
+    [user_id]
+  );
+  res.json(result.rows[0] || null);
+});
+
+
 // ── تایید یا رد درخواست (فقط Admin) ──
 app.put("/contact-requests/:id", async (req, res) => {
   const { id } = req.params;

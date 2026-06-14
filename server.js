@@ -19,6 +19,17 @@ app.get("/profile/:user_id", async (req, res) => {
   res.json(result.rows[0] || null);
 });
 
+// ── آپدیت پروفایل کاربر ──
+app.put("/profile/:user_id", async (req, res) => {
+  const { user_id } = req.params;
+  const { full_name, phone } = req.body;
+  const result = await pool.query(
+    "UPDATE profiles SET full_name = $1, phone = $2 WHERE id = $3 RETURNING *",
+    [full_name, phone, user_id]
+  );
+  res.json(result.rows[0]);
+});
+
 // ── گرفتن همه کاربران (فقط Admin) ──
 app.get("/users", async (req, res) => {
   const { user_id } = req.query;

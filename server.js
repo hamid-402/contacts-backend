@@ -12,6 +12,31 @@ const pool = new Pool({
   max: 1
 });
 
+// ── ثبت‌نام درخواستی ──
+app.post("/register-request", async (req, res) => {
+  const { full_name, phone, email, password } = req.body;
+  try {
+    // چک کن ایمیل قبلاً درخواست داده یا نه
+    const existing = await pool.query(
+      "SELECT id FROM contact_requests WHERE email = $1",
+      [email]
+    );
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ error: "این ایمیل قبلاً درخواست داده است" });
+    }
+
+    // ذخیره درخواست با پسورد
+    await pool.query(
+      "INSERT INTO contact_requests (full_name, phone, email, password_hash, status) VALUES ($1, $2, $3, $4, 'pending')",
+      [full_name, phone, email, password]
+    );
+
+    res.json({ message: "درخواست ثبت شد" });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // ── گرفتن پروفایل کاربر ──
 app.get("/profile/:user_id", async (req, res) => {
   const { user_id } = req.params;
@@ -101,74 +126,14 @@ app.delete("/users/:id", async (req, res) => {
   res.json({ message: "کاربر حذف شد" });
 });
 
-// ── GET همه مخاطبین با فیلتر سطح دسترسی ──
-app.get("/contacts", async (req, res) => {
-  const { user_id } = req.query;
-  if (!user_id) return res.json([]);
-
-  const profile = await pool.query("SELECT role FROM profiles WHERE id = $1", [user_id]);
-  const userRole = profile.rows[0]?.role || 4;
-
-  let result;
-  if (userRole === 1) {
-    // مدیر ارشد — همه مخاطبین رو میبینه
-    result = await pool.query(
-      "SELECT * FROM contacts ORDER BY id DESC"
-    );
-  } else if (userRole === 2) {
-    // مدیر — مخاطبین با visibility 2، 3، 4
-    result = await pool.query(
-      "SELECT * FROM contacts WHERE visibility >= 2 ORDER BY id DESC"
-    );
-  } else if (userRole === 3) {
-    // کارمند — مخاطبین با visibility 3، 4
-    result = await pool.query(
-      "SELECT * FROM contacts WHERE visibility >= 3 ORDER BY id DESC"
-    );
-  } else {
-    // کاربر عادی — فقط مخاطبین با visibility 4
-    result = await pool.query(
-      "SELECT * FROM contacts WHERE visibility = 4 ORDER BY id DESC"
-    );
-  }
-  res.json(result.rows);
-});
-
-// ── GET یک مخاطب ──
-app.get("/contacts/:id", async (req, res) => {
-  const { id } = req.params;
-  const result = await pool.query("SELECT * FROM contacts WHERE id = $1", [id]);
-  res.json(result.rows[0]);
-});
-
-// ── POST اضافه کردن مخاطب ──
-app.post("/contacts", async (req, res) => {
-  const { name, phone, category, date, user_id, visibility } = req.body;
-  console.log("POST body:", req.body);
+// ── گرفتن درخواست یه کاربر خاص ──
+app.get("/contact-requests/user/:user_id", async (req, res) => {
+  const { user_id } = req.params;
   const result = await pool.query(
-    "INSERT INTO contacts (name, phone, category, date, user_id, visibility) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
-    [name, phone, category || "Other", date || "", user_id, visibility || 4]
+    "SELECT * FROM contact_requests WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
+    [user_id]
   );
-  console.log("inserted:", result.rows[0]);
-  res.json(result.rows[0]);
-});
-
-// ── PUT ویرایش مخاطب ──
-app.put("/contacts/:id", async (req, res) => {
-  const { id } = req.params;
-  const { name, phone, category, date, visibility } = req.body;
-  const result = await pool.query(
-    "UPDATE contacts SET name = $1, phone = $2, category = $3, date = $4, visibility = $5 WHERE id = $6 RETURNING *",
-    [name, phone, category || "Other", date || "", visibility || 4, id]
-  );
-  res.json(result.rows[0]);
-});
-
-// ── DELETE حذف مخاطب ──
-app.delete("/contacts/:id", async (req, res) => {
-  const { id } = req.params;
-  await pool.query("DELETE FROM contacts WHERE id = $1", [id]);
-  res.json({ message: "مخاطب حذف شد" });
+  res.json(result.rows[0] || null);
 });
 
 // ── گرفتن همه درخواست‌ها (فقط Admin) ──
@@ -179,7 +144,7 @@ app.get("/contact-requests", async (req, res) => {
     return res.status(403).json({ error: "دسترسی ندارید" });
   }
   const result = await pool.query(
-    "SELECT cr.*, p.email FROM contact_requests cr LEFT JOIN profiles p ON cr.user_id = p.id ORDER BY cr.created_at DESC"
+    "SELECT * FROM contact_requests ORDER BY created_at DESC"
   );
   res.json(result.rows);
 });
@@ -201,22 +166,10 @@ app.post("/contact-requests", async (req, res) => {
   res.json(result.rows[0]);
 });
 
-
-// ── گرفتن درخواست یه کاربر خاص ──
-app.get("/contact-requests/user/:user_id", async (req, res) => {
-  const { user_id } = req.params;
-  const result = await pool.query(
-    "SELECT * FROM contact_requests WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
-    [user_id]
-  );
-  res.json(result.rows[0] || null);
-});
-
-
-// ── تایید یا رد درخواست (فقط Admin) ──
+// ── تایید یا رد درخواست ثبت‌نام (فقط Admin) ──
 app.put("/contact-requests/:id", async (req, res) => {
   const { id } = req.params;
-  const { admin_id, status, visibility } = req.body;
+  const { admin_id, status, visibility, user_role } = req.body;
   const profile = await pool.query("SELECT role FROM profiles WHERE id = $1", [admin_id]);
   if (!profile.rows[0] || profile.rows[0].role !== 1) {
     return res.status(403).json({ error: "دسترسی ندارید" });
@@ -226,18 +179,119 @@ app.put("/contact-requests/:id", async (req, res) => {
   const req_data = request.rows[0];
 
   if (status === 'approved') {
+    // اگه درخواست ثبت‌نام باشه (auth_user_id نداره)
+    if (!req_data.auth_user_id && req_data.email) {
+      // ساخت کاربر توی Supabase
+      const response = await fetch(
+        'https://zgnpjwczcnbbhpwrdbbg.supabase.co/auth/v1/admin/users',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': process.env.SUPABASE_SERVICE_KEY,
+            'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_KEY}`,
+          },
+          body: JSON.stringify({
+            email: req_data.email,
+            password: req_data.password_hash,
+            email_confirm: true,
+          }),
+        }
+      );
+      const userData = await response.json();
+      if (!response.ok) throw new Error(JSON.stringify(userData));
+
+      // ساخت پروفایل
+      await pool.query(
+        "INSERT INTO profiles (id, email, full_name, phone, role) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO UPDATE SET full_name = $3, phone = $4, role = $5",
+        [userData.id, req_data.email, req_data.full_name, req_data.phone, user_role || 4]
+      );
+
+      // اضافه کردن شماره به مخاطبین
+      await pool.query(
+        "INSERT INTO contacts (name, phone, category, date, user_id, visibility) VALUES ($1, $2, $3, $4, $5, $6)",
+        [req_data.full_name, req_data.phone, 'Other', new Date().toDateString(), userData.id, visibility || 4]
+      );
+
+      await pool.query(
+        "UPDATE contact_requests SET status = $1, visibility = $2, user_role = $3, auth_user_id = $4 WHERE id = $5",
+        [status, visibility, user_role, userData.id, id]
+      );
+    } else {
+      // درخواست اضافه شدن به مخاطبین
+      await pool.query(
+        "INSERT INTO contacts (name, phone, category, date, user_id, visibility) VALUES ($1, $2, $3, $4, $5, $6)",
+        [req_data.full_name, req_data.phone, 'Other', new Date().toDateString(), req_data.user_id, visibility || 4]
+      );
+      await pool.query(
+        "UPDATE contact_requests SET status = $1, visibility = $2 WHERE id = $3",
+        [status, visibility, id]
+      );
+    }
+  } else {
     await pool.query(
-      "INSERT INTO contacts (name, phone, category, date, user_id, visibility) VALUES ($1, $2, $3, $4, $5, $6)",
-      [req_data.full_name, req_data.phone, 'Other', new Date().toDateString(), req_data.user_id, visibility]
+      "UPDATE contact_requests SET status = $1 WHERE id = $2",
+      [status, id]
     );
   }
 
-  await pool.query(
-    "UPDATE contact_requests SET status = $1, visibility = $2 WHERE id = $3",
-    [status, visibility, id]
-  );
-
   res.json({ message: status === 'approved' ? "تایید شد" : "رد شد" });
+});
+
+// ── GET همه مخاطبین با فیلتر سطح دسترسی ──
+app.get("/contacts", async (req, res) => {
+  const { user_id } = req.query;
+  if (!user_id) return res.json([]);
+
+  const profile = await pool.query("SELECT role FROM profiles WHERE id = $1", [user_id]);
+  const userRole = profile.rows[0]?.role || 4;
+
+  let result;
+  if (userRole === 1) {
+    result = await pool.query("SELECT * FROM contacts ORDER BY id DESC");
+  } else if (userRole === 2) {
+    result = await pool.query("SELECT * FROM contacts WHERE visibility >= 2 ORDER BY id DESC");
+  } else if (userRole === 3) {
+    result = await pool.query("SELECT * FROM contacts WHERE visibility >= 3 ORDER BY id DESC");
+  } else {
+    result = await pool.query("SELECT * FROM contacts WHERE visibility = 4 ORDER BY id DESC");
+  }
+  res.json(result.rows);
+});
+
+// ── GET یک مخاطب ──
+app.get("/contacts/:id", async (req, res) => {
+  const { id } = req.params;
+  const result = await pool.query("SELECT * FROM contacts WHERE id = $1", [id]);
+  res.json(result.rows[0]);
+});
+
+// ── POST اضافه کردن مخاطب ──
+app.post("/contacts", async (req, res) => {
+  const { name, phone, category, date, user_id, visibility } = req.body;
+  const result = await pool.query(
+    "INSERT INTO contacts (name, phone, category, date, user_id, visibility) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
+    [name, phone, category || "Other", date || "", user_id, visibility || 4]
+  );
+  res.json(result.rows[0]);
+});
+
+// ── PUT ویرایش مخاطب ──
+app.put("/contacts/:id", async (req, res) => {
+  const { id } = req.params;
+  const { name, phone, category, date, visibility } = req.body;
+  const result = await pool.query(
+    "UPDATE contacts SET name = $1, phone = $2, category = $3, date = $4, visibility = $5 WHERE id = $6 RETURNING *",
+    [name, phone, category || "Other", date || "", visibility || 4, id]
+  );
+  res.json(result.rows[0]);
+});
+
+// ── DELETE حذف مخاطب ──
+app.delete("/contacts/:id", async (req, res) => {
+  const { id } = req.params;
+  await pool.query("DELETE FROM contacts WHERE id = $1", [id]);
+  res.json({ message: "مخاطب حذف شد" });
 });
 
 app.listen(3001, () => {

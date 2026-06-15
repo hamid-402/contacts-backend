@@ -323,6 +323,45 @@ app.delete("/contacts/:id", async (req, res) => {
   res.json({ message: "مخاطب حذف شد" });
 });
 
+// ── GET همه وظایف کاربر ──
+app.get("/tasks", async (req, res) => {
+  const { user_id } = req.query;
+  if (!user_id) return res.json([]);
+  const result = await pool.query(
+    "SELECT * FROM tasks WHERE user_id = $1 ORDER BY priority ASC, created_at DESC",
+    [user_id]
+  );
+  res.json(result.rows);
+});
+
+// ── POST اضافه کردن وظیفه ──
+app.post("/tasks", async (req, res) => {
+  const { user_id, title, description, priority, due_date } = req.body;
+  const result = await pool.query(
+    "INSERT INTO tasks (user_id, title, description, priority, due_date) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+    [user_id, title, description || "", priority || 2, due_date || null]
+  );
+  res.json(result.rows[0]);
+});
+
+// ── PUT آپدیت وظیفه ──
+app.put("/tasks/:id", async (req, res) => {
+  const { id } = req.params;
+  const { title, description, status, priority, due_date } = req.body;
+  const result = await pool.query(
+    "UPDATE tasks SET title = $1, description = $2, status = $3, priority = $4, due_date = $5 WHERE id = $6 RETURNING *",
+    [title, description || "", status || "pending", priority || 2, due_date || null, id]
+  );
+  res.json(result.rows[0]);
+});
+
+// ── DELETE حذف وظیفه ──
+app.delete("/tasks/:id", async (req, res) => {
+  const { id } = req.params;
+  await pool.query("DELETE FROM tasks WHERE id = $1", [id]);
+  res.json({ message: "وظیفه حذف شد" });
+});
+
 app.listen(3001, () => {
   console.log("Server is running on port 3001");
 });

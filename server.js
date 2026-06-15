@@ -336,10 +336,10 @@ app.get("/tasks", async (req, res) => {
 
 // ── POST اضافه کردن وظیفه ──
 app.post("/tasks", async (req, res) => {
-  const { user_id, title, description, priority, due_date } = req.body;
+  const { user_id, title, description, priority, due_date, start_time, end_time } = req.body;
   const result = await pool.query(
-    "INSERT INTO tasks (user_id, title, description, priority, due_date) VALUES ($1, $2, $3, $4, $5) RETURNING *",
-    [user_id, title, description || "", priority || 2, due_date || null]
+    "INSERT INTO tasks (user_id, title, description, priority, due_date, start_time, end_time) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
+    [user_id, title, description || "", priority || 2, due_date || null, start_time || null, end_time || null]
   );
   res.json(result.rows[0]);
 });
@@ -347,10 +347,10 @@ app.post("/tasks", async (req, res) => {
 // ── PUT آپدیت وظیفه ──
 app.put("/tasks/:id", async (req, res) => {
   const { id } = req.params;
-  const { title, description, status, priority, due_date } = req.body;
+  const { title, description, status, priority, due_date, start_time, end_time } = req.body;
   const result = await pool.query(
-    "UPDATE tasks SET title = $1, description = $2, status = $3, priority = $4, due_date = $5 WHERE id = $6 RETURNING *",
-    [title, description || "", status || "pending", priority || 2, due_date || null, id]
+    "UPDATE tasks SET title = $1, description = $2, status = $3, priority = $4, due_date = $5, start_time = $6, end_time = $7 WHERE id = $8 RETURNING *",
+    [title, description || "", status || "pending", priority || 2, due_date || null, start_time || null, end_time || null, id]
   );
   res.json(result.rows[0]);
 });

@@ -114,6 +114,35 @@ app.put("/users/:id", async (req, res) => {
   res.json(result.rows[0]);
 });
 
+// ── ریست رمز کاربر (فقط Admin) ──
+app.put("/users/:id/reset-password", async (req, res) => {
+  const { id } = req.params;
+  const { admin_id, new_password } = req.body;
+  const profile = await pool.query("SELECT role FROM profiles WHERE id = $1", [admin_id]);
+  if (!profile.rows[0] || profile.rows[0].role !== 1) {
+    return res.status(403).json({ error: "دسترسی ندارید" });
+  }
+  try {
+    const response = await fetch(
+      `https://zgnpjwczcnbbhpwrdbbg.supabase.co/auth/v1/admin/users/${id}`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': process.env.SUPABASE_SERVICE_KEY,
+          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_KEY}`,
+        },
+        body: JSON.stringify({ password: new_password }),
+      }
+    );
+    const data = await response.json();
+    if (!response.ok) throw new Error(JSON.stringify(data));
+    res.json({ message: "رمز عبور ریست شد" });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // ── حذف کاربر (فقط Admin) ──
 app.delete("/users/:id", async (req, res) => {
   const { id } = req.params;

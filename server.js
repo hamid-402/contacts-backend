@@ -362,6 +362,45 @@ app.delete("/tasks/:id", async (req, res) => {
   res.json({ message: "وظیفه حذف شد" });
 });
 
+// ── GET همه رویدادهای کاربر ──
+app.get("/events", async (req, res) => {
+  const { user_id } = req.query;
+  if (!user_id) return res.json([]);
+  const result = await pool.query(
+    "SELECT * FROM events WHERE user_id = $1 ORDER BY date ASC, start_time ASC",
+    [user_id]
+  );
+  res.json(result.rows);
+});
+
+// ── POST اضافه کردن رویداد ──
+app.post("/events", async (req, res) => {
+  const { user_id, title, description, date, start_time, end_time, type } = req.body;
+  const result = await pool.query(
+    "INSERT INTO events (user_id, title, description, date, start_time, end_time, type) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
+    [user_id, title, description || "", date, start_time || null, end_time || null, type || "meeting"]
+  );
+  res.json(result.rows[0]);
+});
+
+// ── PUT ویرایش رویداد ──
+app.put("/events/:id", async (req, res) => {
+  const { id } = req.params;
+  const { title, description, date, start_time, end_time, type } = req.body;
+  const result = await pool.query(
+    "UPDATE events SET title = $1, description = $2, date = $3, start_time = $4, end_time = $5, type = $6 WHERE id = $7 RETURNING *",
+    [title, description || "", date, start_time || null, end_time || null, type || "meeting", id]
+  );
+  res.json(result.rows[0]);
+});
+
+// ── DELETE حذف رویداد ──
+app.delete("/events/:id", async (req, res) => {
+  const { id } = req.params;
+  await pool.query("DELETE FROM events WHERE id = $1", [id]);
+  res.json({ message: "رویداد حذف شد" });
+});
+
 app.listen(3001, () => {
   console.log("Server is running on port 3001");
 });

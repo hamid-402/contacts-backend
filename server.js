@@ -120,27 +120,23 @@ app.put("/profile/:user_id", async (req, res) => {
 app.get("/users", async (req, res) => {
   const role = await getRole(req.query.user_id);
   if (role !== 1) return res.status(403).json({ error: "دسترسی ندارید" });
-  const result = await pool.query("SELECT * FROM profiles ORDER BY role ASC");
+  const result = await pool.query(`SELECT p.*, m.full_name as manager_name FROM profiles p LEFT JOIN profiles m ON p.manager_id = m.id ORDER BY p.role ASC, p.full_name ASC`);
   res.json(result.rows);
 });
 
 // ── اضافه کردن کاربر (فقط Admin) ──
 app.post("/users", async (req, res) => {
-  const { admin_id, email, full_name, role, password, phone, visibility, username } = req.body;
+  const { admin_id, email, full_name, role, password, phone, visibility, username, manager_id, department } = req.body;
   const adminRole = await getRole(admin_id);
   if (adminRole !== 1) return res.status(403).json({ error: "دسترسی ندارید" });
 
   try {
-    // چک یکتا بودن username
     if (username) {
-      const uCheck = await pool.query(
-        "SELECT id FROM profiles WHERE username = $1", [username]
-      );
+      const uCheck = await pool.query("SELECT id FROM profiles WHERE username = $1", [username]);
       if (uCheck.rows.length > 0)
         return res.status(400).json({ error: "این نام کاربری قبلاً استفاده شده است" });
     }
 
-    // ساخت کاربر در Supabase Auth
     const response = await fetch(
       "https://zgnpjwczcnbbhpwrdbbg.supabase.co/auth/v1/admin/users",
       {
@@ -156,20 +152,18 @@ app.post("/users", async (req, res) => {
     const data = await response.json();
     if (!response.ok) throw new Error(JSON.stringify(data));
 
-    // ساخت پروفایل با phone و username
     await pool.query(
-      `INSERT INTO profiles (id, email, full_name, role, phone, username)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO profiles (id, email, full_name, role, phone, username, manager_id, department)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (id) DO UPDATE
-       SET full_name = $3, role = $4, phone = $5, username = $6`,
-      [data.id, email, full_name, role, phone || null, username || null]
+       SET full_name = $3, role = $4, phone = $5, username = $6, manager_id = $7, department = $8`,
+      [data.id, email, full_name, role, phone || null, username || null, manager_id || null, department || null]
     );
 
-    // اگه شماره تلفن داشت، به مخاطبین اضافه کن
     if (phone) {
       await pool.query(
         "INSERT INTO contacts (name, phone, category, date, user_id, visibility) VALUES ($1, $2, $3, $4, $5, $6)",
-        [full_name, phone, "اداری", new Date().toDateString(), data.id, visibility || 4]
+        [full_name, phone, department || "اداری", new Date().toDateString(), data.id, visibility || 4]
       );
     }
 
@@ -182,12 +176,12 @@ app.post("/users", async (req, res) => {
 // ── آپدیت سطح دسترسی کاربر ──
 app.put("/users/:id", async (req, res) => {
   const { id } = req.params;
-  const { admin_id, role, full_name } = req.body;
+  const { admin_id, role, full_name, manager_id, department } = req.body;
   const adminRole = await getRole(admin_id);
   if (adminRole !== 1) return res.status(403).json({ error: "دسترسی ندارید" });
   const result = await pool.query(
-    "UPDATE profiles SET role = $1, full_name = $2 WHERE id = $3 RETURNING *",
-    [role, full_name, id]
+    "UPDATE profiles SET role = $1, full_name = $2, manager_id = $3, department = $4 WHERE id = $5 RETURNING *",
+    [role, full_name, manager_id || null, department || null, id]
   );
   res.json(result.rows[0]);
 });
@@ -552,9 +546,10 @@ app.get("/reports/team", async (req, res) => {
   if (role !== 2) return res.status(403).json({ error: "دسترسی ندارید" });
 
   try {
-    // کارمندان یعنی role 3 و 4
+    // کارمندانی که این مدیر رو به عنوان manager_id دارن
     const users = await pool.query(
-      "SELECT id, full_name, email, username, role FROM profiles WHERE role IN (3,4) ORDER BY role ASC, full_name ASC"
+      "SELECT id, full_name, email, username, role FROM profiles WHERE manager_id = $1 ORDER BY role ASC, full_name ASC",
+      [user_id]
     );
 
     const results = await Promise.all(
@@ -577,6 +572,35 @@ app.get("/reports/me", async (req, res) => {
   try {
     const perf = await getUserPerformance(user_id);
     res.json(perf);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── گزارش بر اساس بخش — فقط مدیر ارشد ──
+app.get("/reports/departments", async (req, res) => {
+  const { user_id } = req.query;
+  const role = await getRole(user_id);
+  if (role !== 1) return res.status(403).json({ error: "دسترسی ندارید" });
+
+  try {
+    const users = await pool.query(`
+      SELECT p.*, m.full_name as manager_name
+      FROM profiles p
+      LEFT JOIN profiles m ON p.manager_id = m.id
+      ORDER BY p.department ASC, p.role ASC, p.full_name ASC
+    `);
+
+    // گروه‌بندی بر اساس بخش
+    const deptMap = {};
+    for (const u of users.rows) {
+      const dept = u.department || "نامشخص";
+      if (!deptMap[dept]) deptMap[dept] = { name: dept, members: [], manager: null };
+      deptMap[dept].members.push(u);
+      if (u.role <= 2 && !deptMap[dept].manager) deptMap[dept].manager = u.full_name;
+    }
+
+    res.json({ departments: Object.values(deptMap) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

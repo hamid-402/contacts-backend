@@ -664,7 +664,7 @@ app.post("/organizations", async (req, res) => {
     const result = await pool.query(
       `INSERT INTO organizations 
         (name, type, status, national_id, website, address, note, phones, emails, main_contact, visibility, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10::jsonb,$11,$12) RETURNING *`,
       [name, type||"other", status||"active", national_id||null, website||null,
        address||null, note||null,
        JSON.stringify(phones||[]), JSON.stringify(emails||[]),
@@ -689,7 +689,7 @@ app.put("/organizations/:id", async (req, res) => {
     const result = await pool.query(
       `UPDATE organizations SET
         name=$1, type=$2, status=$3, national_id=$4, website=$5,
-        address=$6, note=$7, phones=$8, emails=$9, main_contact=$10, visibility=$11
+        address=$6, note=$7, phones=$8::jsonb, emails=$9::jsonb, main_contact=$10::jsonb, visibility=$11
        WHERE id=$12 RETURNING *`,
       [name, type||"other", status||"active", national_id||null, website||null,
        address||null, note||null,

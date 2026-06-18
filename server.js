@@ -584,23 +584,54 @@ app.get("/reports/departments", async (req, res) => {
   if (role !== 1) return res.status(403).json({ error: "دسترسی ندارید" });
 
   try {
-    const users = await pool.query(`
-      SELECT p.*, m.full_name as manager_name
-      FROM profiles p
-      LEFT JOIN profiles m ON p.manager_id = m.id
-      ORDER BY p.department ASC, p.role ASC, p.full_name ASC
-    `);
+    const [usersResult, contactsResult] = await Promise.all([
+      pool.query(`
+        SELECT p.*, m.full_name as manager_name
+        FROM profiles p
+        LEFT JOIN profiles m ON p.manager_id = m.id
+        ORDER BY p.role ASC, p.full_name ASC
+      `),
+      pool.query("SELECT id, name, phone, category, visibility FROM contacts ORDER BY name ASC"),
+    ]);
+
+    const users    = usersResult.rows;
+    const contacts = contactsResult.rows;
 
     // گروه‌بندی بر اساس بخش
-    const deptMap = {};
-    for (const u of users.rows) {
-      const dept = u.department || "نامشخص";
-      if (!deptMap[dept]) deptMap[dept] = { name: dept, members: [], manager: null };
-      deptMap[dept].members.push(u);
-      if (u.role <= 2 && !deptMap[dept].manager) deptMap[dept].manager = u.full_name;
-    }
+    const CATEGORIES = [
+      "مالی گرین","CRM","تامین مالی","دواپس","مالی کسبینو","دیتابیس",
+      "توسعه کسب و کار","فروش","اداری","طرح و برنامه","فنی کسبینو",
+      "ایزدتک","مدیالب","روزنامه","زنیت","دانشکده علامه طبرسی","حراست"
+    ];
 
-    res.json({ departments: Object.values(deptMap) });
+    const departments = CATEGORIES.map(dept => {
+      const members  = users.filter(u => u.department === dept);
+      const deptContacts = contacts.filter(c => c.category === dept);
+      const manager  = members.find(u => u.role <= 2) || null;
+
+      // عملکرد اعضا
+      const memberPerf = members.map(u => ({
+        id:       u.id,
+        full_name:u.full_name,
+        email:    u.email,
+        username: u.username,
+        role:     u.role,
+        manager_id: u.manager_id,
+        manager_name: u.manager_name,
+      }));
+
+      return {
+        name:          dept,
+        members:       memberPerf,
+        memberCount:   members.length,
+        manager:       manager ? { id: manager.id, full_name: manager.full_name, email: manager.email } : null,
+        contacts:      deptContacts,
+        contactCount:  deptContacts.length,
+        hasData:       members.length > 0 || deptContacts.length > 0,
+      };
+    });
+
+    res.json({ departments });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

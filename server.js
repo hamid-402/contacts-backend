@@ -606,4 +606,118 @@ app.get("/reports/departments", async (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════
+// ORGANIZATIONS
+// ══════════════════════════════════════════
+
+// ── helper: چک دسترسی مشاهده ──
+async function canViewOrg(user_id, visibility) {
+  const role = await getRole(user_id);
+  if (role === 1) return true;
+  if (role === 2 && visibility >= 2) return true;
+  if (role === 3 && visibility >= 3) return true;
+  if (role === 4 && visibility === 4) return true;
+  return false;
+}
+
+// ── GET همه سازمان‌ها ──
+app.get("/organizations", async (req, res) => {
+  const { user_id } = req.query;
+  if (!user_id) return res.json([]);
+  const role = await getRole(user_id);
+  let result;
+  if (role === 1)      result = await pool.query("SELECT * FROM organizations ORDER BY name ASC");
+  else if (role === 2) result = await pool.query("SELECT * FROM organizations WHERE visibility >= 2 ORDER BY name ASC");
+  else if (role === 3) result = await pool.query("SELECT * FROM organizations WHERE visibility >= 3 ORDER BY name ASC");
+  else                 result = await pool.query("SELECT * FROM organizations WHERE visibility = 4 ORDER BY name ASC");
+  res.json(result.rows);
+});
+
+// ── GET یک سازمان ──
+app.get("/organizations/:id", async (req, res) => {
+  const { id } = req.params;
+  const { user_id } = req.query;
+  try {
+    const result = await pool.query(
+      `SELECT o.*, 
+        (SELECT json_agg(c.*) FROM contacts c WHERE c.organization_id = o.id) as contacts
+       FROM organizations o WHERE o.id = $1`, [id]
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: "سازمان یافت نشد" });
+    const org = result.rows[0];
+    if (!(await canViewOrg(user_id, org.visibility)))
+      return res.status(403).json({ error: "دسترسی ندارید" });
+    res.json(org);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST افزودن سازمان — role 1 و 2 ──
+app.post("/organizations", async (req, res) => {
+  const { user_id, name, type, status, national_id, website, address, note,
+          phones, emails, main_contact, visibility } = req.body;
+  const role = await getRole(user_id);
+  if (role !== 1 && role !== 2)
+    return res.status(403).json({ error: "دسترسی ندارید" });
+  try {
+    const result = await pool.query(
+      `INSERT INTO organizations 
+        (name, type, status, national_id, website, address, note, phones, emails, main_contact, visibility, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [name, type||"other", status||"active", national_id||null, website||null,
+       address||null, note||null,
+       JSON.stringify(phones||[]), JSON.stringify(emails||[]),
+       JSON.stringify(main_contact||{}),
+       visibility||4, user_id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ── PUT ویرایش سازمان — role 1 و 2 ──
+app.put("/organizations/:id", async (req, res) => {
+  const { id } = req.params;
+  const { user_id, name, type, status, national_id, website, address, note,
+          phones, emails, main_contact, visibility } = req.body;
+  const role = await getRole(user_id);
+  if (role !== 1 && role !== 2)
+    return res.status(403).json({ error: "دسترسی ندارید" });
+  try {
+    const result = await pool.query(
+      `UPDATE organizations SET
+        name=$1, type=$2, status=$3, national_id=$4, website=$5,
+        address=$6, note=$7, phones=$8, emails=$9, main_contact=$10, visibility=$11
+       WHERE id=$12 RETURNING *`,
+      [name, type||"other", status||"active", national_id||null, website||null,
+       address||null, note||null,
+       JSON.stringify(phones||[]), JSON.stringify(emails||[]),
+       JSON.stringify(main_contact||{}),
+       visibility||4, id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ── DELETE حذف سازمان — فقط role 1 ──
+app.delete("/organizations/:id", async (req, res) => {
+  const { id } = req.params;
+  const { user_id } = req.body;
+  const role = await getRole(user_id);
+  if (role !== 1)
+    return res.status(403).json({ error: "فقط مدیر ارشد می‌تواند سازمان را حذف کند" });
+  try {
+    // قبل از حذف، organization_id مخاطبین رو null کن
+    await pool.query("UPDATE contacts SET organization_id = NULL WHERE organization_id = $1", [id]);
+    await pool.query("DELETE FROM organizations WHERE id = $1", [id]);
+    res.json({ message: "سازمان حذف شد" });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 app.listen(3001, () => console.log("Server running on port 3001"));

@@ -657,22 +657,27 @@ app.get("/organizations/:id", async (req, res) => {
 app.post("/organizations", async (req, res) => {
   const { user_id, name, type, status, national_id, website, address, note,
           phones, emails, main_contact, visibility } = req.body;
+  console.log("POST /organizations body:", JSON.stringify(req.body));
   const role = await getRole(user_id);
   if (role !== 1 && role !== 2)
     return res.status(403).json({ error: "دسترسی ندارید" });
   try {
+    const phonesStr      = JSON.stringify(Array.isArray(phones) ? phones : []);
+    const emailsStr      = JSON.stringify(Array.isArray(emails) ? emails : []);
+    const mainContactStr = JSON.stringify(main_contact && typeof main_contact === "object" ? main_contact : {});
+    console.log("Inserting with:", { name, type, status, phonesStr, emailsStr, mainContactStr, visibility });
     const result = await pool.query(
       `INSERT INTO organizations 
         (name, type, status, national_id, website, address, note, phones, emails, main_contact, visibility, created_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10::jsonb,$11,$12) RETURNING *`,
       [name, type||"other", status||"active", national_id||null, website||null,
        address||null, note||null,
-       JSON.stringify(phones||[]), JSON.stringify(emails||[]),
-       JSON.stringify(main_contact||{}),
+       phonesStr, emailsStr, mainContactStr,
        visibility||4, user_id]
     );
     res.json(result.rows[0]);
   } catch (err) {
+    console.error("POST /organizations error:", err.message);
     res.status(400).json({ error: err.message });
   }
 });

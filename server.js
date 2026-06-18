@@ -657,7 +657,6 @@ app.get("/organizations/:id", async (req, res) => {
 app.post("/organizations", async (req, res) => {
   const { user_id, name, type, status, national_id, website, address, note,
           phones, emails, main_contact, visibility } = req.body;
-  console.log("POST /organizations body:", JSON.stringify(req.body));
   const role = await getRole(user_id);
   if (role !== 1 && role !== 2)
     return res.status(403).json({ error: "دسترسی ندارید" });
@@ -665,7 +664,6 @@ app.post("/organizations", async (req, res) => {
     const phonesStr      = JSON.stringify(Array.isArray(phones) ? phones : []);
     const emailsStr      = JSON.stringify(Array.isArray(emails) ? emails : []);
     const mainContactStr = JSON.stringify(main_contact && typeof main_contact === "object" ? main_contact : {});
-    console.log("Inserting with:", { name, type, status, phonesStr, emailsStr, mainContactStr, visibility });
     const result = await pool.query(
       `INSERT INTO organizations 
         (name, type, status, national_id, website, address, note, phones, emails, main_contact, visibility, created_by)
@@ -677,7 +675,6 @@ app.post("/organizations", async (req, res) => {
     );
     res.json(result.rows[0]);
   } catch (err) {
-    console.error("POST /organizations error:", err.message);
     res.status(400).json({ error: err.message });
   }
 });

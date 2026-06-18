@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const { Pool } = require("pg");
+const jalaali = require("jalaali-js");
 
 const app = express();
 app.use(cors());
@@ -481,7 +482,7 @@ async function getUserPerformance(uid) {
 
   // overdue — سررسید گذشته
   const now = new Date();
-  const { jy, jm, jd } = require("jalaali-js").toJalaali(now);
+  const { jy, jm, jd } = jalaali.toJalaali(now);
   const toF = n => String(n).replace(/\d/g, d => "۰۱۲۳۴۵۶۷۸۹"[d]);
   const todayStr = `${toF(jy)}/${toF(String(jm).padStart(2,"0"))}/${toF(String(jd).padStart(2,"0"))}`;
   const overdue = pending.filter(t => t.due_date && t.due_date < todayStr);
